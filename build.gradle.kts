@@ -278,10 +278,12 @@ allprojects {
 //    buildDir = File(commonBuildDir, project.name)
 
     repositories {
+        intellijSdkRepo(project)
+
         for (repo in (rootProject.extra["repos"] as List<String>)) {
             maven { setUrl(repo) }
         }
-        intellijSdkRepo(project)
+
         androidDxJarRepo(project)
     }
     configureJvmProject(javaHome!!, jvmTarget!!)
