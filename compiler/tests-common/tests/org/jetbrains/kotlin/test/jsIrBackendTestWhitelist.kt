@@ -7,12 +7,6 @@ package org.jetbrains.kotlin.test
 
 import java.io.File
 
-enum class TargetBackend(
-    val whitelist: List<File>? = null // null means that whitelist must not be used
-) {
-    ANY,
-    JVM,
-    JVM_IR,
-    JS,
-    JS_IR(JS_IR_BACKEND_TEST_WHITELIST);
-}
+val JS_IR_BACKEND_TEST_WHITELIST = listOf(
+    "js/js.translator/testData/box/annotation"
+).map { File(it) }
