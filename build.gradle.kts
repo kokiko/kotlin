@@ -189,6 +189,7 @@ extra["compilerModules"] = arrayOf(
         ":compiler:daemon",
         ":compiler:ir.tree",
         ":compiler:ir.psi2ir",
+        ":compiler:backend.js",
         ":compiler:backend-common",
         ":compiler:backend",
         ":compiler:plugin-api",
