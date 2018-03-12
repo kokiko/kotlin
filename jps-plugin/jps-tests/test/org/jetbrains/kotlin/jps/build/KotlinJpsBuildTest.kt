@@ -257,6 +257,13 @@ open class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
         checkWhen(touch("src/test1.kt"), null, k2jsOutput(PROJECT_NAME))
     }
 
+    fun testKotlinJavaScriptProjectWithCustomOutputPaths() {
+        initProject(JS_STDLIB)
+        buildAllModules().assertSuccessful()
+
+        checkOutputFilesList(File(workDir, "target"))
+    }
+
     fun testKotlinJavaScriptProjectWithSourceMap() {
         initProject(JS_STDLIB)
         buildAllModules().assertSuccessful()
@@ -681,7 +688,7 @@ open class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
 
     }
 
-    private fun checkOutputFilesList() {
+    private fun checkOutputFilesList(outputDir: File = productionOutputDir) {
         if (!expectedOutputFile.exists()) {
             expectedOutputFile.writeText("")
             throw IllegalStateException("$expectedOutputFile did not exist. Created empty file.")
@@ -689,7 +696,7 @@ open class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
 
         val sb = StringBuilder()
         val p = Printer(sb, "  ")
-        productionOutputDir.printFilesRecursively(p)
+        outputDir.printFilesRecursively(p)
 
         UsefulTestCase.assertSameLinesWithFile(expectedOutputFile.canonicalPath, sb.toString(), true)
     }
