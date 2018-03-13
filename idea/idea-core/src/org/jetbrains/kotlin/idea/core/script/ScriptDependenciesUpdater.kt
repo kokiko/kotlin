@@ -50,6 +50,7 @@ import java.util.concurrent.Executors
 import kotlin.script.experimental.dependencies.AsyncDependenciesResolver
 import kotlin.script.experimental.dependencies.DependenciesResolver
 import kotlin.script.experimental.dependencies.ScriptDependencies
+import kotlin.script.experimental.dependencies.ScriptReport
 
 class ScriptDependenciesUpdater(
     private val project: Project,
@@ -220,7 +221,10 @@ class ScriptDependenciesUpdater(
 
 
     fun updateSync(file: VirtualFile, scriptDef: KotlinScriptDefinition): Boolean {
-        val newDeps = contentLoader.loadContentsAndResolveDependencies(scriptDef, file) ?: ScriptDependencies.Empty
+        val result = contentLoader.loadContentsAndResolveDependencies(scriptDef, file)
+        if (result.reports.any { it.severity == ScriptReport.Severity.FATAL }) return false
+
+        val newDeps = result.dependencies?.adjustByDefinition(scriptDef) ?: ScriptDependencies.Empty
         return saveNewDependencies(newDeps, file)
     }
 
