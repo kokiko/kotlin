@@ -17,11 +17,9 @@
 package org.jetbrains.kotlin.js.translate.intrinsic.operation
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.js.backend.ast.JsBinaryOperation
 import org.jetbrains.kotlin.js.backend.ast.JsBinaryOperator
-import org.jetbrains.kotlin.js.backend.ast.JsExpression
 import org.jetbrains.kotlin.js.backend.ast.JsNullLiteral
 import org.jetbrains.kotlin.js.translate.context.TranslationContext
 import org.jetbrains.kotlin.js.translate.intrinsic.functions.factories.TopLevelFIF
@@ -40,15 +38,15 @@ import java.util.*
 object EqualsBOIF : BinaryOperationIntrinsicFactory {
     override fun getSupportTokens() = OperatorConventions.EQUALS_OPERATIONS!!
 
-
-    private val JS_NUMBER_PRIMITIVES =
-        EnumSet.of(PrimitiveType.BYTE, PrimitiveType.SHORT, PrimitiveType.INT, PrimitiveType.DOUBLE, PrimitiveType.FLOAT)
-
-
     private val equalsNullIntrinsic: BinaryOperationIntrinsic = { expression, left, right, context ->
         val (subject, ktSubject) = if (right is JsNullLiteral) Pair(left, expression.left!!) else Pair(right, expression.right!!)
         TranslationUtils.nullCheck(ktSubject, subject, context, isNegatedOperation(expression))
     }
+
+    private fun binaryOperationIntrinsic(operator: JsBinaryOperator, negatedOperator: JsBinaryOperator): BinaryOperationIntrinsic =
+        { expression, left, right, context ->
+            JsBinaryOperation(if (isNegatedOperation(expression)) negatedOperator else operator, left, right)
+        }
 
     private val kotlinEqualsIntrinsic: BinaryOperationIntrinsic = { expression, left, right, context ->
         val coercedLeft = TranslationUtils.coerce(context, left, context.currentModule.builtIns.anyType)
@@ -57,70 +55,89 @@ object EqualsBOIF : BinaryOperationIntrinsicFactory {
         if (isNegatedOperation(expression)) JsAstUtils.not(result) else result
     }
 
+    private val refEq: BinaryOperationIntrinsic = binaryOperationIntrinsic(JsBinaryOperator.REF_EQ, JsBinaryOperator.REF_NEQ)
+    private val eq: BinaryOperationIntrinsic = binaryOperationIntrinsic(JsBinaryOperator.EQ, JsBinaryOperator.NEQ)
+
     private fun primitiveTypes(
-        expression: KtBinaryExpression,
-        left: JsExpression,
-        right: JsExpression,
-        context: TranslationContext
-    ): JsExpression? {
-        val (leftKotlinType, rightKotlinType) = binaryOperationTypes(expression, context)
+        leftKotlinType: KotlinType, rightKotlinType: KotlinType
+    ): BinaryOperationIntrinsic {
 
-        val leftType = leftKotlinType?.let { KotlinBuiltIns.getPrimitiveType(it) }
-        val rightType = rightKotlinType?.let { KotlinBuiltIns.getPrimitiveType(it) }
-
-        val isNegated = isNegatedOperation(expression)
-
-        if (leftType != null && rightType != null && (
-                    leftType in JS_NUMBER_PRIMITIVES && rightType in JS_NUMBER_PRIMITIVES ||
-                            leftType in JS_NUMBER_PRIMITIVES && rightType == PrimitiveType.LONG ||
-                            leftType == PrimitiveType.LONG && rightType in JS_NUMBER_PRIMITIVES ||
-                            leftType == PrimitiveType.BOOLEAN && rightType == PrimitiveType.BOOLEAN ||
-                            leftType == PrimitiveType.CHAR && rightType == PrimitiveType.CHAR
-                    )
-        ) {
-            val useEq = leftType == PrimitiveType.LONG || rightType == PrimitiveType.LONG
-
-            val operator = when {
-                useEq && isNegated -> JsBinaryOperator.NEQ
-                useEq && !isNegated -> JsBinaryOperator.EQ
-                !useEq && isNegated -> JsBinaryOperator.REF_NEQ
-                else /* !useEq && !isNegated */ -> JsBinaryOperator.REF_EQ
+        fun <T> chooser(number: T, long: T, bool: T, char: T): (KotlinType) -> T = {
+            when {
+                KotlinBuiltIns.isLongOrNullableLong(it) -> long
+                KotlinBuiltIns.isBooleanOrNullableBoolean(it) -> bool
+                KotlinBuiltIns.isCharOrNullableChar(it) -> char
+                else -> number
             }
-
-            val coercedLeft = TranslationUtils.coerce(context, left, leftKotlinType)
-            val coercedRight = TranslationUtils.coerce(context, right, rightKotlinType)
-            return JsBinaryOperation(operator, coercedLeft, coercedRight)
         }
 
-        return null
+        val eq: BinaryOperationIntrinsic = { expression, left, right, context ->
+            JsBinaryOperation(
+                if (isNegatedOperation(expression)) JsBinaryOperator.NEQ else JsBinaryOperator.EQ,
+                TranslationUtils.coerce(context, left, leftKotlinType),
+                TranslationUtils.coerce(context, right, rightKotlinType)
+            )
+        }
+
+        val refEq: BinaryOperationIntrinsic = { expression, left, right, context ->
+            JsBinaryOperation(
+                if (isNegatedOperation(expression)) JsBinaryOperator.REF_NEQ else JsBinaryOperator.REF_EQ,
+                TranslationUtils.coerce(context, left, leftKotlinType),
+                TranslationUtils.coerce(context, right, rightKotlinType)
+            )
+        }
+
+        // Used for number to number comparison
+        val default = { leftNullable: Boolean, rightNullable: Boolean ->
+            if (leftNullable && rightNullable) eq else refEq
+        }
+
+        // Used to compare Boolean with number types and Long. Kotlin.equals handles cases like 0: Int? == false: Boolean?
+        val bool = { leftNullable: Boolean, rightNullable: Boolean ->
+            if (leftNullable && rightNullable) kotlinEqualsIntrinsic else eq
+        }
+
+        // Used to compare Long with number types.
+        val allEq = { _: Boolean, _: Boolean -> eq }
+
+        // Used to compare Char with other primitive types and Long with Long
+        val allKEq = { _: Boolean, _: Boolean -> kotlinEqualsIntrinsic }
+
+        return chooser(
+            chooser(default, allEq, bool, allKEq),
+            chooser(allEq, allKEq, bool, allKEq),
+            chooser(bool, bool, default, allKEq),
+            chooser(allKEq, allKEq, allKEq, default)
+        )(leftKotlinType)(rightKotlinType)(TypeUtils.isNullableType(leftKotlinType), TypeUtils.isNullableType(rightKotlinType))
     }
 
     private fun KtBinaryExpression.appliedToDynamic(context: TranslationContext) =
         getResolvedCall(context.bindingContext())?.dispatchReceiver?.type?.isDynamic() ?: false
 
+    private val KotlinType.primitive
+        get() = KotlinBuiltIns.isPrimitiveTypeOrNullablePrimitiveType(this)
+
     override fun getIntrinsic(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): BinaryOperationIntrinsic? =
         when {
-            isEnumEqualsIntrinsicApplicable(descriptor, leftType, rightType) -> { expression, left, right, _ ->
-                val operator = if (isNegatedOperation(expression)) JsBinaryOperator.REF_NEQ else JsBinaryOperator.REF_EQ
-                JsBinaryOperation(operator, left, right)
-            }
+            leftType == null || rightType == null -> null
+
+            isEnumEqualsIntrinsicApplicable(descriptor, leftType, rightType) -> refEq
 
             KotlinBuiltIns.isBuiltIn(descriptor) || TopLevelFIF.EQUALS_IN_ANY.test(descriptor) -> { expression, left, right, context ->
-                if (right is JsNullLiteral || left is JsNullLiteral) {
-                    equalsNullIntrinsic(expression, left, right, context)
-                } else primitiveTypes(expression, left, right, context) ?: if (expression.appliedToDynamic(context)) {
-                    JsBinaryOperation(if (isNegatedOperation(expression)) JsBinaryOperator.NEQ else JsBinaryOperator.EQ, left, right)
-                } else {
-                    kotlinEqualsIntrinsic(expression, left, right, context)
-                }
+                when {
+                    left is JsNullLiteral || right is JsNullLiteral -> equalsNullIntrinsic
+                    leftType.primitive && rightType.primitive -> primitiveTypes(leftType, rightType)
+                    expression.appliedToDynamic(context) -> eq
+                    else -> kotlinEqualsIntrinsic
+                }(expression, left, right, context)
             }
 
             else -> null
         }
 
 
-    private fun isEnumEqualsIntrinsicApplicable(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): Boolean {
-        return DescriptorUtils.isEnumClass(descriptor.containingDeclaration) && leftType != null && rightType != null &&
+    private fun isEnumEqualsIntrinsicApplicable(descriptor: FunctionDescriptor, leftType: KotlinType, rightType: KotlinType): Boolean {
+        return DescriptorUtils.isEnumClass(descriptor.containingDeclaration) &&
                 !TypeUtils.isNullableType(leftType) && !TypeUtils.isNullableType(rightType)
     }
 }

@@ -32,6 +32,7 @@ import org.jetbrains.kotlin.types.KotlinType
 object AssignmentBOIF : BinaryOperationIntrinsicFactory {
     override fun getSupportTokens() = ImmutableSet.of(KtTokens.EQ)
 
+    // TODO is it even needed?
     override fun getIntrinsic(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): BinaryOperationIntrinsic? {
         if (leftType != null && !KotlinBuiltIns.isCharOrNullableChar(leftType) && rightType != null && KotlinBuiltIns.isCharOrNullableChar(rightType)) {
             return { expression, left, right, context ->
