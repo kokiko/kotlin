@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.parsing.KotlinParserDefinition
 import org.jetbrains.kotlin.psi.KtScript
 import kotlin.reflect.KClass
 import kotlin.script.experimental.dependencies.DependenciesResolver
+import kotlin.script.experimental.location.ScriptExpectedLocation
 import kotlin.script.templates.standard.ScriptTemplateWithArgs
 
 open class KotlinScriptDefinition(val template: KClass<out Any>) {
@@ -45,6 +46,9 @@ open class KotlinScriptDefinition(val template: KClass<out Any>) {
     open val dependencyResolver: DependenciesResolver get() = DependenciesResolver.NoDependencies
 
     open val acceptedAnnotations: List<KClass<out Annotation>> get() = emptyList()
+
+    open val scriptExpectedLocations: List<ScriptExpectedLocation> =
+        listOf(ScriptExpectedLocation.SourcesOnly, ScriptExpectedLocation.TestsOnly)
 }
 
 object StandardScriptDefinition : KotlinScriptDefinition(ScriptTemplateWithArgs::class)

@@ -31,6 +31,8 @@ import kotlin.reflect.full.memberFunctions
 import kotlin.script.dependencies.ScriptDependenciesResolver
 import kotlin.script.experimental.dependencies.AsyncDependenciesResolver
 import kotlin.script.experimental.dependencies.DependenciesResolver
+import kotlin.script.experimental.location.ScriptExpectedLocations
+import kotlin.script.experimental.location.ScriptExpectedLocation
 import kotlin.script.templates.AcceptedAnnotations
 
 open class KotlinScriptDefinitionFromAnnotatedTemplate(
@@ -129,6 +131,12 @@ open class KotlinScriptDefinitionFromAnnotatedTemplate(
                         .joinToString(prefix = "${AsyncDependenciesResolver::class.qualifiedName} api changed, fix this code") { it.name }
             }
         }
+    }
+
+    override val scriptExpectedLocations: List<ScriptExpectedLocation> by lazy {
+        takeUnlessError {
+            template.annotations.firstIsInstanceOrNull<ScriptExpectedLocations>()
+        }?.value?.toList() ?: super.scriptExpectedLocations
     }
 
     override val name = template.simpleName!!

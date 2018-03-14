@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.idea.framework.GRADLE_SYSTEM_ID
 import org.jetbrains.kotlin.lexer.KotlinLexer
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.script.KotlinScriptDefinition
+import org.jetbrains.kotlin.script.KotlinScriptDefinitionFromAnnotatedTemplate
 import org.jetbrains.plugins.gradle.config.GradleSettingsListenerAdapter
 import org.jetbrains.plugins.gradle.service.execution.GradleExecutionHelper
 import org.jetbrains.plugins.gradle.settings.DistributionType
@@ -41,6 +42,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.script.dependencies.Environment
 import kotlin.script.experimental.dependencies.ScriptDependencies
+import kotlin.script.experimental.location.ScriptExpectedLocation
 
 
 class GradleScriptDefinitionsContributor(private val project: Project): ScriptDefinitionContributor {
@@ -193,7 +195,10 @@ class GradleScriptDefinitionsContributor(private val project: Project): ScriptDe
                 templateClasspath,
                 createEnvironment(gradleExeSettings),
                 additionalResolverClasspath(gradleLibDir)
-        )
+        ).map {
+            // Expand scope for old gradle script definition
+            if (!it.scriptExpectedLocations.contains(ScriptExpectedLocation.Project)) GradleKotlinScriptDefinitionFromAnnotatedTemplate(it) else it
+        }
     }
 
     fun reloadIfNeccessary() {
@@ -206,6 +211,13 @@ class GradleScriptDefinitionsContributor(private val project: Project): ScriptDe
         ScriptDefinitionsManager.getInstance(project).reloadDefinitionsBy(this)
     }
 
+}
+
+class GradleKotlinScriptDefinitionFromAnnotatedTemplate(
+    base: KotlinScriptDefinitionFromAnnotatedTemplate
+) : KotlinScriptDefinitionFromAnnotatedTemplate(base.template, base.environment, base.templateClasspath) {
+    override val scriptExpectedLocations: List<ScriptExpectedLocation>
+        get() = listOf(ScriptExpectedLocation.Project)
 }
 
 class ReloadGradleTemplatesOnSync : ExternalSystemTaskNotificationListenerAdapter() {
