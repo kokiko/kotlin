@@ -621,6 +621,11 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
                 DeclarationDescriptor functionWithCrossinlineParameter = variableDescriptor.getContainingDeclaration();
                 for (int i = functionsStack.size() - 1; i >= 0; i--) {
                     if (functionsStack.get(i).isSuspend()) {
+                        Boolean alreadyPutValue = bindingTrace.getBindingContext()
+                                .get(CodegenBinding.CAPTURES_CROSSINLINE_SUSPEND_LAMBDA, functionsStack.get(i));
+                        if (alreadyPutValue != null && alreadyPutValue) {
+                            return;
+                        }
                         bindingTrace.record(
                                 CodegenBinding.CAPTURES_CROSSINLINE_SUSPEND_LAMBDA,
                                 functionsStack.get(i),
